@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>work</title>
+    <style>
+			body { margin: 0; }
+			canvas {
+				display:block;
+				width:100%;
+				height:100%;
+			 }
+		</style>
+  </head>
+  <body>
+    <script src="js/three.js"></script>
+    <script src="js/OrbitControls.js"></script>
+      <script src="js/physi.js"></script>
+<script src="js/GLTFLoader.js"></script>
+<script src="js/perlin_noise.js">
+
+</script>
+
+
+
+        <script>
+
+
+          Physijs.scripts.worker='js/physijs_worker.js';
+
+
+          var sceneWidth;
+          var sceneHeight;
+          var camera;
+          var scene;
+          var renderer;
+          var dom;
+          var scoreText;
+          var car = {};
+          var score=0;
+          var wheel_material, wheel_geometry, big_wheel_geometry;
+          var damping=0.7;
+          var friction=0.9;//high
+          var ball;
+
+
+
+
+
+          function createLand(){
+            var ground_material, ground_geometry,sun, ground;
+            sun=new THREE.AmbientLight(0xffffff,5)
+            scene.add(sun);
+
+          	ground_material = Physijs.createMaterial(
+          		new THREE.MeshBasicMaterial( { color: 0x00ff00 } ),friction, .9 // low restitution
+          	);
+          	// Ground
+          	ground = new Physijs.BoxMesh(new THREE.BoxGeometry(550, 1, 550),ground_material,0 // mass
+          	);
+
+          	scene.add( ground );
+          	//walls
+          	var wall_material = Physijs.createMaterial(
+          		new THREE.MeshBasicMaterial( { color: 0x444444 } ),friction, .9 // low restitution
+          	);
+          	var wallHeight=50;
+          	var wallLength=550;
+          	var wall1 = new Physijs.BoxMesh(new THREE.BoxGeometry(wallLength, wallHeight, 15),wall_material,0 // mass
+          	);
+
+          	wall1.position.y=wallHeight/2;
+          	wall1.position.z=wallLength/2;
+          	scene.add( wall1 );
+          	var wall2 = new Physijs.BoxMesh(new THREE.BoxGeometry(wallLength, wallHeight, 15),wall_material,0 // mass
+          	);
+
+          	wall2.position.y=wallHeight/2;
+          	wall2.position.z=-wallLength/2;
+          	scene.add( wall2 );
+          	var wall3 = new Physijs.BoxMesh(new THREE.BoxGeometry(15, wallHeight, wallLength),wall_material,0 // mass
+          	);
+
+          	wall3.position.y=wallHeight/2;
+          	wall3.position.x=-wallLength/2;
+          	scene.add( wall3 );
+          	var wall4 = new Physijs.BoxMesh(new THREE.BoxGeometry(15, wallHeight, wallLength),wall_material,0 // mass
+          	);
+
+          	wall4.position.y=wallHeight/2;
+          	wall4.position.x=wallLength/2;
+          	scene.add( wall4 );
+
+
+  					}
+
+
+            function border(posX,rotY,posZ){
+              var border=new THREE.BoxGeometry(5,35,330);
+              var loader=new THREE.TextureLoader();
+    					var material=loader.load('textures/crate.gif');
+              var borderMaterial=new THREE.MeshBasicMaterial({map:material});
+              var borderObj=new Physijs.BoxMesh(border,borderMaterial,0);
+              borderObj.rotation.y=rotY;
+              borderObj.position.y=3;
+              borderObj.position.x=posX;
+              borderObj.position.z=posZ;
+              scene.add(borderObj);
+            }
+            function dents(scaleZ,rotY,posX,posZ){
+              var border=new THREE.BoxGeometry(5,35,scaleZ);
+              var loader=new THREE.TextureLoader();
+    					var material=loader.load('textures/crate.gif');
+              var borderMaterial=new THREE.MeshBasicMaterial({map:material});
+              var borderObj=new Physijs.BoxMesh(border,borderMaterial,0);
+              borderObj.rotation.y=rotY;
+              borderObj.position.y=8;
+              borderObj.position.x=posX;
+              borderObj.position.z=posZ;
+              scene.add(borderObj);
+            }
+            function hero(){
+              var sphere=new THREE.SphereGeometry(10,32,32);
+              var loader=new THREE.TextureLoader();
+              var mat=loader.load('textures/road.jpg');
+              var sphereMaterial=new THREE.MeshBasicMaterial({map:sphereMaterial});
+              var hero=new Physijs.BoxMesh(sphere,sphereMaterial,3000);
+              hero.position.y=18;
+              hero.position.x=20;
+              hero.position.z=-40;
+              scene.add(hero);
+              return hero;
+            }
+          scene=new Physijs.Scene;
+          var sceneloader=new THREE.TextureLoader();
+          var sceneback=sceneloader.load('textures/city.jpg');
+
+          scene.background=sceneback;
+         scene.setGravity(new THREE.Vector3(0,-170,0));
+            //var scene=new THREE.Scene();
+            //scene.background=new THREE.Color(0xdddddd);
+
+            camera=new THREE.PerspectiveCamera(40,window.innerWidth/window.innerHeight,1,15000);
+            //camera.rotation.y=45/180*Math.PI;
+            camera.position.x=0;
+            camera.position.y=150;
+            camera.position.z=550;
+            camera.lookAt(scene.position);
+
+
+            renderer=new THREE.WebGLRenderer({antialias:true});
+            //renderer.setClearColor(0xff0fff);
+            renderer.setSize(window.innerWidth,window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+
+
+
+var light=new THREE.AmbientLight(0xffffff,5);
+scene.add(light);
+
+//controls=new THREE.OrbitControls(camera,renderer.domElement);
+
+
+var FirstTime=1
+var hero;
+
+function update(){
+if(FirstTime){
+createLand();
+//border(-170,0,0);
+//border(170,0,0);
+//border(0,29.85,165);
+//border(0,29.85,-170);
+hero=hero();
+//dents(155,0,0,90);
+//dents(135,29.85,85,-10);
+//dents()
+
+FirstTime=0;
+}
+moveHero();
+
+
+
+  scene.simulate();
+//  controls.update();
+}
+  function animate(){
+  update();
+  renderer.render(scene,camera);
+  requestAnimationFrame(animate);
+}
+var move_left,move_right,move_up,move_down;
+function moveHero(){
+
+  if(move_left){
+  hero.position.x-=2;
+  hero.__dirtyPosition=true;
+  }
+  else if(move_right){
+    hero.position.x+=2;
+    hero.__dirtyPosition=true;
+  }
+  else if(move_up){
+    hero.position.z-=2;
+    hero.__dirtyPosition=true;
+  }
+  else if(move_down){
+    hero.position.z+=2;
+    hero.__dirtyPosition=true;
+  }
+
+
+  }
+
+document.addEventListener('keydown',function(event){
+  var code=event.keyCode;
+  //move_left=0;move_right=0;move_up=0;move_down=0;pause=0;
+  if(code==37){
+    move_left=1;
+  }
+  if(code==38){
+    move_up=1;
+  }
+  if(code==39){
+    move_right=1;
+  }
+  if(code==40){
+    move_down=1;
+  }
+  if(code==32){
+    pause=1;
+  }
+  if(code==27){
+    change_cam_angle=1;
+  }
+});
+
+document.addEventListener('keyup',function(event){
+  var code=event.keyCode;
+  //move_left=1;move_right=1;move_up=1;move_down=1;pause=0;
+  if(code==37){
+    move_left=0;
+  }
+  if(code==38){
+    move_up=0;
+  }
+  if(code==39){
+    move_right=0;
+  }
+  if(code==40){
+    move_down=0;
+  }
+  if(code==32){
+    pause=0;
+  }
+  if(code==27){
+    change_cam_angle=0;
+  }
+});
+requestAnimationFrame(animate);
+
+
+        </script>
+
+
+  </body>
+</html>

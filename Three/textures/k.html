@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>work</title>
+    <style>
+			body { margin: 0; }
+			canvas {
+				display:block;
+				width:100%;
+				height:100%;
+			 }
+		</style>
+  </head>
+  <body>
+    <script src="js/three.js"></script>
+    <script src="js/OrbitControls.js"></script>
+      <script src="js/physi.js"></script>
+<script src="js/GLTFLoader.js"></script>
+<script src="js/perlin_noise.js">
+
+</script>
+
+
+
+        <script>
+
+
+          Physijs.scripts.worker='js/physijs_worker.js';
+          let scene,camera,renderer,controls;
+          let car=new THREE.Geometry();
+
+          var gltfGeometry=new THREE.BufferGeometry();
+          cars=[];
+          meshes=[];
+          var damping=0.7;
+          var friction=0.9;//high
+          const manager=new THREE.LoadingManager();
+          manager.onLoad=init;
+
+
+          const gltfLoader=new THREE.GLTFLoader(manager);
+          gltfLoader.load('models/scene.gltf',(gltf)=>{
+            gltf.scene.traverse(function(child){
+              if(child.isMesh){
+                gltfGeometry=child.geometry;
+
+                cars.push(gltfGeometry);
+              }
+            });
+
+          });
+
+
+          function createLand(){
+            var ground_material, ground_geometry,sun, ground;
+
+
+          	ground_material = Physijs.createMaterial(
+          		new THREE.MeshBasicMaterial( { color: 0x00ff00 } ),friction, .9 // low restitution
+          	);
+          	// Ground
+          	ground = new Physijs.BoxMesh(new THREE.BoxGeometry(550, 1, 550),ground_material,0 // mass
+          	);
+
+          	scene.add( ground );
+          	//walls
+          	var wall_material = Physijs.createMaterial(
+          		new THREE.MeshBasicMaterial( { color: 0x444444 } ),friction, .9 // low restitution
+          	);
+          	var wallHeight=50;
+          	var wallLength=550;
+          	var wall1 = new Physijs.BoxMesh(new THREE.BoxGeometry(wallLength, wallHeight, 15),wall_material,0 // mass
+          	);
+
+          	wall1.position.y=wallHeight/2;
+          	wall1.position.z=wallLength/2;
+          	scene.add( wall1 );
+          	var wall2 = new Physijs.BoxMesh(new THREE.BoxGeometry(wallLength, wallHeight, 15),wall_material,0 // mass
+          	);
+
+          	wall2.position.y=wallHeight/2;
+          	wall2.position.z=-wallLength/2;
+          	scene.add( wall2 );
+          	var wall3 = new Physijs.BoxMesh(new THREE.BoxGeometry(15, wallHeight, wallLength),wall_material,0 // mass
+          	);
+
+          	wall3.position.y=wallHeight/2;
+          	wall3.position.x=-wallLength/2;
+          	scene.add( wall3 );
+          	var wall4 = new Physijs.BoxMesh(new THREE.BoxGeometry(15, wallHeight, wallLength),wall_material,0 // mass
+          	);
+
+          	wall4.position.y=wallHeight/2;
+          	wall4.position.x=wallLength/2;
+          	scene.add( wall4 );
+
+
+  					}
+
+
+          function init(){
+            console.log("hey");
+          scene=new Physijs.Scene;
+          var sceneloader=new THREE.TextureLoader();
+          var sceneback=sceneloader.load('textures/city.jpg');
+
+          scene.background=sceneback;
+         scene.setGravity(new THREE.Vector3(0,-170,0));
+            //var scene=new THREE.Scene();
+            //scene.background=new THREE.Color(0xdddddd);
+
+            camera=new THREE.PerspectiveCamera(40,window.innerWidth/window.innerHeight,1,15000);
+            //camera.rotation.y=45/180*Math.PI;
+            camera.position.x=0;
+            camera.position.y=150;
+            camera.position.z=250;
+            camera.lookAt(scene.position);
+
+
+            renderer=new THREE.WebGLRenderer({antialias:true});
+            //renderer.setClearColor(0xff0fff);
+            renderer.setSize(window.innerWidth,window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            var ambi=new THREE.AmbientLight(0xffffff,5);
+            scene.add(ambi);
+
+
+
+
+//controls=new THREE.OrbitControls(camera,renderer.domElement);
+
+
+requestAnimationFrame(animate);
+}
+var firstTime=1;
+var objectCar;
+function update(){
+  if(firstTime){
+  createLand();
+
+
+for(var i=0;i<cars.length;i++){
+  var loader=new THREE.TextureLoader();
+  var mat=loader.load('textures/porsche.png');
+  var carmat=new THREE.MeshBasicMaterial({map:mat});
+  var mesh=new THREE.Mesh(cars[i],carmat);
+  meshes.push(mesh);
+}
+
+var carbody=new THREE.Geometry().fromBufferGeometry(meshes[0].geometry);
+car.merge(carbody,meshes[0].matrix);
+
+var seats=new THREE.Geometry().fromBufferGeometry(meshes[2].geometry);
+car.merge(seats,meshes[2].matrix);
+//var leftOvers=new THREE.Geometry().fromBufferGeometry(meshes[3].geometry);
+//car.merge(leftOvers,meshes[3].matrix);
+
+var carObj=new Physijs.BoxMesh(car,carmat);
+objectCar=carObj;
+//var j=new Physijs.BoxMesh(car,carmat);
+//j.scale.set(0.1,0.1,0.1);
+//j.position.set(50,0,0);
+carObj.scale.set(0.1,0.1,0.1);
+carObj.rotation.x=30;
+carObj.position.y=30;
+scene.add(carObj);
+//scene.add(j)
+  firstTime=0;
+}
+moveTruck()
+change_cam_orientation();
+
+
+  scene.simulate();
+ //controls.update();
+}
+  function animate(){
+
+  update();
+  renderer.render(scene,camera);
+  requestAnimationFrame(animate);
+}
+
+var move_left,move_right,move_up,move_down,pause;
+var x=0;//allows for space bar to slow down car
+var change_cam_angle;
+var y_axis=new THREE.Vector3(0,1,0);
+
+function change_cam_orientation(){
+  if(change_cam_angle){
+    camera.position.x=200;
+    camera.position.y=100;
+    camera.position.z=200;
+    camera.lookAt(scene.position);
+  }
+  else{
+    camera.position.x=-140;
+    camera.position.y=50;
+    camera.position.z=0;
+    camera.rotation.y=-Math.PI/2;
+    camera.lookAt(objectCar.position);
+  }
+}
+
+
+
+function moveTruck(){
+
+  if(move_left){
+  rot=new THREE.Quaternion().setFromAxisAngle(y_axis,Math.PI/120);
+  cur=objectCar.quaternion;
+  cur.multiplyQuaternions(rot,cur);
+  objectCar.__dirtyRotation=true;
+  }
+  else if(move_right){
+    rot=new THREE.Quaternion().setFromAxisAngle(y_axis,-Math.PI/120);
+    cur=objectCar.quaternion;
+    cur.multiplyQuaternions(rot,cur);
+    objectCar.__dirtyRotation=true;
+  }
+  else if(move_up){
+    var curr_rotation=new THREE.Matrix4().extractRotation(objectCar.matrix);
+    //console.log(curr_rotation);
+    var force_vector=new THREE.Vector3(3500000,0,0).applyMatrix4(curr_rotation);
+    //console.log(force_vector);
+    objectCar.applyCentralImpulse(force_vector);
+    objectCar.__dirtyPosition=true;
+    x=0;
+  }
+  else if(move_down){
+    var curr_rotation=new THREE.Matrix4().extractRotation(objectCar.matrix);
+    var force_vector=new THREE.Vector3(-500000,0,0).applyMatrix4(curr_rotation);
+    objectCar.applyCentralImpulse(force_vector);
+    objectCar.__dirtyPosition=true;
+    x=1;
+  }
+
+}
+document.addEventListener('keydown',function(event){
+  var code=event.keyCode;
+  //move_left=0;move_right=0;move_up=0;move_down=0;pause=0;
+  if(code==37){
+    move_left=1;
+  }
+  if(code==38){
+    move_up=1;
+  }
+  if(code==39){
+    move_right=1;
+  }
+  if(code==40){
+    move_down=1;
+  }
+  if(code==32){
+    pause=1;
+  }
+  if(code==27){
+    change_cam_angle=1;
+  }
+});
+
+document.addEventListener('keyup',function(event){
+  var code=event.keyCode;
+  //move_left=1;move_right=1;move_up=1;move_down=1;pause=0;
+  if(code==37){
+    move_left=0;
+  }
+  if(code==38){
+    move_up=0;
+  }
+  if(code==39){
+    move_right=0;
+  }
+  if(code==40){
+    move_down=0;
+  }
+  if(code==32){
+    pause=0;
+  }
+  if(code==27){
+    change_cam_angle=0;
+  }
+});
+
+
+
+        </script>
+
+
+  </body>
+</html>

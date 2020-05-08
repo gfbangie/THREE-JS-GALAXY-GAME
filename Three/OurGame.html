@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>My first three.js app</title>
+		<style>
+			body { margin: 0; }
+
+		</style>
+	</head>
+	<body>
+
+		<script src="js/three.js"></script>
+
+		<script src="js/OrbitControls.js"></script>
+		<script src="js/physi.js"></script>
+		<script src="js/GLTFLoader.js"></script>
+		<script src="js/perlin_noise.js"></script>
+		<script src="js/ammo.js"></script>
+		<script src="js/THREEBSP.js"></script>
+
+		<script>
+
+				Physijs.scripts.worker='js/physijs_worker.js';
+
+				//THREE types of material : MeshBasicMaterial,MeshPhongMaterial,MeshLambertMaterial.The second two require a light source.
+
+				//set variables for our entirer game
+				let scene,camera,friction,damping,renderer,spotLight,ambiLight,scoreText,infoText,timer,moon;
+				//loading manager which is important for models
+				const manager=new THREE.LoadingManager();
+				//calls the init function when we done loading model/s
+				manager.onLoad=init;
+
+				//loads our model from respective path
+				const gltfLoader=new THREE.GLTFLoader(manager);
+				gltfLoader.load('models/neptune/scene.gltf',(gltf)=>{
+					gltf.scene.position.y=170;
+					gltf.scene.position.x=250;
+					gltf.scene.scale.set(15,15,15);
+					//sets moon variable to the model,dont add it to scene here as scene is not defined yet , added in our if statement in update function
+					moon=gltf.scene;
+				});
+
+
+				//setup function
+				function init(){
+				//adds the score to the document
+				scoreText = document.createElement('div');
+				scoreText.style.position = 'absolute';
+				scoreText.style.width = 100;
+				scoreText.style.height = 100;
+				scoreText.style.color="blue";
+				scoreText.innerHTML = "0";
+				scoreText.style.top = 80 + 'px';
+				scoreText.style.left = 100 + 'px';
+				document.body.appendChild(scoreText);
+
+				//adds info text to the document
+				infoText = document.createElement('div');
+				infoText.style.position = 'absolute';
+				infoText.style.width = 100;
+				infoText.style.height = 100;
+				infoText.style.color="blue";
+				infoText.innerHTML = "use arrow keys to drive and space bar to stop UFO. destroy the asteroids bud.Press Space Bar on screen to stabilize car";
+				infoText.style.top = 60 + 'px';
+				infoText.style.left = 100 + 'px';
+				document.body.appendChild(infoText);
+
+				//adds timer to the document
+				timer=document.createElement('div');
+				timer.style.position='absolute';
+				timer.style.width=100;
+				timer.style.height=100;
+				timer.style.color='white';
+				timer.innerHTML="0";
+				timer.style.top=10+'px';
+				timer.style.left=200+'px';
+				document.body.appendChild(timer);
+
+				alert("DESTROY THE ASTEROIDS BEFORE ITS TOO LATE")
+				damping=0.7;
+				friction=0.9;//high
+				scene=new Physijs.Scene; //Scene physics
+
+				scene.setGravity(new THREE.Vector3(0,-20,0));//gravity for scene
+
+				//loads the sky material
+				var loader=new THREE.TextureLoader();
+				var mat=loader.load('textures/sky.jpg');
+				var cubeMat=new THREE.MeshBasicMaterial({map:mat,side:THREE.DoubleSide});
+				scene.background=mat;
+
+				//creates camera and positions it
+				camera=new THREE.PerspectiveCamera(40,window.innerWidth/window.innerHeight,0.1,1000);
+				camera.rotation.y=-Math.PI/2;
+				camera.position.x=-160;
+				camera.position.y=50;
+
+				//what must the camera look at
+				camera.lookAt(scene.position);
+
+
+
+
+				//renderer that renders our actual screen
+				renderer=new THREE.WebGLRenderer({antialias:true});
+				renderer.setSize(window.innerWidth,window.innerHeight);
+				document.body.appendChild(renderer.domElement);
+				//resize screen based on window size
+				window.addEventListener('resize',()=>{
+					renderer.setSize( window.innerWidth, window.innerHeight );
+				 	camera.aspect=window.innerWidth / window.innerHeight;
+				 	camera.updateProjectionMatrix();
+				});
+
+				//second parameter of lights is the intensity, first is the color
+
+				//creates SpotLight for wall infront of car
+				var spotLight=new THREE.DirectionalLight(0xffffff,1);
+				spotLight.position.set(-420,20,0);//spotLight doesnt need target
+				scene.add(spotLight);
+
+				//creates DirectionalLight for the blue moon on top of the car, press ESC to see moon
+				var directionalLight=new THREE.DirectionalLight(0xffffff,0.5);
+				scene.add(directionalLight.target);//directionalLight must have a target
+				directionalLight.position.set(270,170,50);
+				directionalLight.target=moon;//respective target for directionalLight
+				scene.add(directionalLight);
+
+				//note that some walls are dim because no light shining on it
+
+				//adds general light to screen
+				var ambiLight=new THREE.AmbientLight(0xffffff,0.5);//if set to 1 then no other light is needed but then we cant have shadows
+				scene.add(ambiLight);
+				requestAnimationFrame(animate);
+			}
+
+
+
+				//creates Land that we drive on
+				function createLand(){
+					var ground_material, ground_geometry,sun, ground;
+
+					var loader=new THREE.TextureLoader();
+					var mat=loader.load('textures/sky.jpg');
+					ground_material = Physijs.createMaterial(
+						new THREE.MeshBasicMaterial( { color: 0xfffff ,opacity:0,transparent:true} ),friction, .9 // low restitution
+					);
+					// Ground
+					ground = new Physijs.BoxMesh(new THREE.BoxGeometry(900, 1, 900),ground_material,0 // mass
+					);
+
+					scene.add( ground );
+					//walls
+					var text=new THREE.TextureLoader();
+					var mat=text.load("textures/neon.jpg")
+					var wall_material =
+						new THREE.MeshLambertMaterial( { color: 0xfe019a } ) ;// low restitution;
+					var wallHeight=50;
+					var wallLength=900;
+					var wall1 = new Physijs.BoxMesh(new THREE.BoxGeometry(wallLength, wallHeight, 15),wall_material,0 // mass
+					);
+
+					//collision events
+					wall1.addEventListener('collision',()=>{
+						//position for ufo)
+						ufo.position.x=0;
+						ufo.position.y=20;
+						ufo.position.z=0;
+						//sets velocity of ufo to zero so that it doesnt move after the accident
+						ufo.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+						ufo.setAngularVelocity(new THREE.Vector3(0, 0, 0));
+						//always put this when changing position of objects in the scene
+						ufo.__dirtyPosition=true;
+						//reset score
+						score=0;
+						scoreText.innerHTML=score.toString();
+						//stop timer
+						clock.stop();
+						alert("You have failed this planet");
+						//restart timer
+						clock.start();
+					});
+
+					wall1.position.y=wallHeight/2;
+					wall1.position.z=wallLength/2;
+					scene.add( wall1 );
+					var wall2 = new Physijs.BoxMesh(new THREE.BoxGeometry(wallLength, wallHeight, 15),wall_material,0 // mass
+					);
+
+					//same as first collision example
+					wall2.addEventListener('collision',()=>{
+						ufo.position.x=0;
+						ufo.position.y=20;
+						ufo.position.z=0;
+						ufo.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+						ufo.setAngularVelocity(new THREE.Vector3(0, 0, 0));
+						ufo.__dirtyPosition=true;
+						score=0;
+						scoreText.innerHTML=score.toString();
+						clock.stop();
+						alert("You have failed this planet");
+						clock.start();
+					});
+
+					wall2.position.y=wallHeight/2;
+					wall2.position.z=-wallLength/2;
+					scene.add( wall2 );
+					var wall3 = new Physijs.BoxMesh(new THREE.BoxGeometry(15, wallHeight, wallLength),wall_material,0 // mass
+					);
+
+					//same as first collision example
+					wall3.addEventListener('collision',()=>{
+						ufo.position.x=0;
+						ufo.position.y=20;
+						ufo.position.z=0;
+						ufo.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+						ufo.setAngularVelocity(new THREE.Vector3(0, 0, 0));
+						ufo.__dirtyPosition=true;
+						score=0;
+						scoreText.innerHTML=score.toString();
+						clock.stop();
+						alert("You have failed this planet");
+						clock.start();
+					});
+
+					wall3.position.y=wallHeight/2;
+					wall3.position.x=-wallLength/2;
+					scene.add( wall3 );
+					var wall4 = new Physijs.BoxMesh(new THREE.BoxGeometry(15, wallHeight, wallLength),wall_material,0 // mass
+					);
+
+					//same as first collision example
+					wall4.addEventListener('collision',()=>{
+						ufo.position.x=0;
+						ufo.position.y=20;
+						ufo.position.z=0;
+						ufo.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+						ufo.setAngularVelocity(new THREE.Vector3(0, 0, 0));
+						ufo.__dirtyPosition=true;
+						score=0;
+						scoreText.innerHTML=score.toString();
+						clock.stop();
+						alert("You have failed this planet");
+						clock.start();
+					});
+
+					wall4.position.y=wallHeight/2;
+					wall4.position.x=wallLength/2;
+					scene.add( wall4 );
+
+
+					}
+
+					//function to create asteroid/planet
+				function createBall(){
+				//geometry is a sphere
+				var ball=new THREE.SphereGeometry(5,32,32);
+				//loads a texture
+				var loader=new THREE.TextureLoader();
+				var m=loader.load("textures/moon.jpeg");
+				//sets material to map to loaded texture , if you want transparency put after 'm' transparent:true,same with opacity but opacity:0.5
+				var ballmat=new THREE.MeshBasicMaterial({map:m});
+				//physic objects always boxmesh for collision ease
+				var ballObject=new Physijs.BoxMesh(ball,ballmat);
+				//produces value between 400 and 300
+				var range=100*Math.random()+300;
+				//sets ball position based on range
+				ballObject.position.x = -range;
+				ballObject.position.z = -range;
+				ballObject.__dirtyPosition=true;
+				ballObject.position.y=5.5;
+				//not sure what this does but just keep it
+				ballObject.setDamping(0,0.9);
+
+				//ballObjectect.scale.set(5,5,5);//can scale if we want but then we'd have to change y position
+				scene.add(ballObject);
+
+				//ballObject event listener
+				ballObject.addEventListener('collision',()=>{
+				var range=100*Math.random()+300;
+				ballObject.position.y=5.5;
+				if(ballObject.position.x>0 && ballObject.position.z>0){
+				val=Math.floor(Math.random()*3);
+				if(val==0){
+				ballObject.position.x = -range;
+				ballObject.position.z = -range;
+				ballObject.__dirtyPosition=true;
+				}
+				else if(val==1){
+					ballObject.position.x = -range;
+					ballObject.position.z = range;
+					ballObject.__dirtyPosition=true;
+				}
+				else if(val==2){
+					ballObject.position.x = range;
+					ballObject.position.z = -range;
+					ballObject.__dirtyPosition=true;
+				}
+				}
+				else if(ballObject.position.x>0 && ballObject.position.z<0){
+					val=Math.floor(Math.random()*3);
+					if(val==0){
+					ballObject.position.x = -range;
+					ballObject.position.z = range;
+					ballObject.__dirtyPosition=true;
+					}
+					else if(val==1){
+						ballObject.position.x = -range;
+						ballObject.position.z = -range;
+						ballObject.__dirtyPosition=true;
+					}
+					else if(val==2){
+						ballObject.position.x = range;
+						ballObject.position.z = range;
+						ballObject.__dirtyPosition=true;
+					}
+					}
+				else if(ballObject.position.x<0 && ballObject.position.z>0){
+					val=Math.floor(Math.random()*3);
+					if(val==0){
+					ballObject.position.x = range;
+					ballObject.position.z = -range;
+					ballObject.__dirtyPosition=true;
+					}
+					else if(val==1){
+						ballObject.position.x = -range;
+						ballObject.position.z = -range;
+						ballObject.__dirtyPosition=true;
+					}
+					else if(val==2){
+						ballObject.position.x = range;
+						ballObject.position.z = range;
+						ballObject.__dirtyPosition=true;
+					}
+					}
+				else if(ballObject.position.x<0 && ballObject.position.z<0){
+					val=Math.floor(Math.random()*3);
+					if(val==0){
+					ballObject.position.x = range;
+					ballObject.position.z = range;
+					ballObject.__dirtyPosition=true;
+					}
+					else if(val==1){
+						ballObject.position.x = -range;
+						ballObject.position.z = range;
+						ballObject.__dirtyPosition=true;
+					}
+					else if(val==2){
+						ballObject.position.x = range;
+						ballObject.position.z = -range;
+						ballObject.__dirtyPosition=true;
+					}
+					}
+					//increments score variable if we bump into planet/asteroid
+				score++;
+				//converts to string to use in document
+				scoreText.innerHTML=(score).toString();
+				//sets ballObject to zero to prevent after collisions
+				ballObject.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+				ballObject.setAngularVelocity(new THREE.Vector3(0, 0, 0));
+			});
+
+		}
+
+
+
+
+	//function to create Truck , very heavy function , just go through it.Not needed anymore left it if we need for future
+	function createTruck(){
+	var sphereGeo1=new THREE.SphereGeometry(10,20,20);
+	var sphereMat1=new THREE.MeshLambertMaterial({color:0xfff000});
+	var mesh1=new THREE.Mesh(sphereGeo1,sphereMat1);
+
+
+	var sphereMat2=new THREE.MeshLambertMaterial({color:0xff0000});
+	var mesh2=new THREE.Mesh(sphereGeo1,sphereMat2);
+	mesh2.position.x=9;
+
+
+	var sphereMat3=new THREE.MeshLambertMaterial({color:0x000fff});
+	var mesh3=new THREE.Mesh(sphereGeo1,sphereMat3);
+	mesh3.position.x=-9;
+
+
+	var sphere1BSP=new ThreeBSP(mesh1);
+	var sphere2BSP=new ThreeBSP(mesh2);
+	var sphere3BSP=new ThreeBSP(mesh3);
+
+	//above code creates wheels of car
+
+	var loader=new THREE.TextureLoader();
+	var material=loader.load('textures/index.jpeg');
+
+	var resultBSP=sphere1BSP.subtract(sphere2BSP).subtract(sphere3BSP);
+
+	var resultMesh=resultBSP.toMesh();
+
+	//material for car ,can change this if we'd like to something else , just change the image file 6 lines up. Make sure image is in texture folder
+	resultMesh.material=new THREE.MeshBasicMaterial({map:material});
+	resultMesh.geometry.computeFaceNormals();
+	resultMesh.geometry.computeVertexNormals();
+
+	//creates general geometry which we will use for car
+	var geom=new THREE.Geometry();
+	//truckBody
+	var truckBody_mesh=new THREE.Mesh(new THREE.CubeGeometry(100,30,40),new THREE.MeshLambertMaterial({color:0xff0000}));
+	truckBody_mesh.updateMatrix();
+	geom.merge(truckBody_mesh.geometry,truckBody_mesh.matrix);
+
+
+	var truckBody_Front=new THREE.Mesh(new THREE.CubeGeometry(25,15,40),new THREE.MeshLambertMaterial({map:material}));
+
+	truckBody_Front.position.x=62.5;
+	truckBody_Front.position.y=-7.5;
+	truckBody_Front.updateMatrix();
+	geom.merge(truckBody_Front.geometry,truckBody_Front.matrix);
+
+	var wheel1_Mesh=new THREE.Mesh(resultMesh.geometry,resultMesh.material);
+	wheel1_Mesh.position.x=65;
+	wheel1_Mesh.position.y=-15;
+	wheel1_Mesh.position.z=20;
+	wheel1_Mesh.rotation.y=Math.PI/2;
+	wheel1_Mesh.updateMatrix();
+	geom.merge(wheel1_Mesh.geometry,wheel1_Mesh.matrix);
+
+	var wheel2_Mesh=new THREE.Mesh(resultMesh.geometry,resultMesh.material);
+	wheel2_Mesh.position.x=65;
+	wheel2_Mesh.position.y=-15;
+	wheel2_Mesh.position.z=-20;
+	wheel2_Mesh.rotation.y=Math.PI/2;
+	wheel2_Mesh.updateMatrix();
+	geom.merge(wheel2_Mesh.geometry,wheel2_Mesh.matrix);
+
+	var wheel3_Mesh=new THREE.Mesh(resultMesh.geometry,resultMesh.material);
+	wheel3_Mesh.position.x=-40;
+	wheel3_Mesh.position.y=-15;
+	wheel3_Mesh.position.z=20;
+	wheel3_Mesh.rotation.y=Math.PI/2;
+	wheel3_Mesh.updateMatrix();
+	geom.merge(wheel3_Mesh.geometry,wheel3_Mesh.matrix);
+
+	var wheel4_Mesh=new THREE.Mesh(resultMesh.geometry,resultMesh.material);
+	wheel4_Mesh.position.x=-40;
+	wheel4_Mesh.position.y=-15;
+	wheel4_Mesh.position.z=-20;
+	wheel4_Mesh.rotation.y=Math.PI/2;
+	wheel4_Mesh.updateMatrix();
+	geom.merge(wheel4_Mesh.geometry,wheel4_Mesh.matrix);
+
+	//creates physics car
+	var truck=new Physijs.BoxMesh(geom,resultMesh.material);
+	//var truck=new THREE.Mesh(geom,resultMesh.material,0.1,10);
+	truck.position.y=20;
+	//truck.scale.set(0.5,0.5,0.5);
+	scene.add(truck);
+	return truck;
+}
+
+//function to create our UFO
+function createUFO(){
+	//first five lines creates bottom donut part of ufo
+	var geometry = new THREE.TorusGeometry( 10, 2, 16, 100 );
+	var material = new THREE.MeshBasicMaterial( { color: 0xffff00 } );
+	var torus1 = new THREE.Mesh( geometry, material );
+	torus1.rotation.x=29.5;
+	torus1.position.y=-9;
+
+	//next five lines creates second bottom donut part of ufo
+	var geometry = new THREE.TorusGeometry( 7, 2, 16, 100 );
+	//var material = new THREE.MeshBasicMaterial( { color: 0xffff00 } );
+	var torus2 = new THREE.Mesh( geometry, material );
+	torus2.rotation.x=29.5;
+	torus2.position.y=-7;
+
+	//four lines below create third layer of ufo
+	var geometry = new THREE.TorusGeometry( 5, 2, 16, 100 );
+	var cylinder = new THREE.Mesh( geometry, material );
+	cylinder.position.y=-5;
+	cylinder.rotation.x=29.5;
+
+	//five lines below create second top layer
+	var geometry = new THREE.CylinderGeometry( 3.9, 3.9, 2, 64 );
+	var cylinder2 = new THREE.Mesh( geometry, material );
+	cylinder2.position.y=-3;
+	cylinder2.rotation.x=31;
+	cylinder2.position.x=-0.2;
+
+	//creates the ufo ball(indicator)
+	var geometry = new THREE.SphereGeometry( 2, 32, 32 );
+	var sphere = new THREE.Mesh( geometry, material );
+	sphere.position.y=-2;
+
+	//creates our geometry which will contain all our objects from above
+	var geom=new THREE.Geometry();
+	//every two lines is the main process for merging objects to one massive object
+	torus1.updateMatrix();
+	geom.merge(torus1.geometry,torus1.matrix);
+
+	torus2.updateMatrix();
+	geom.merge(torus2.geometry,torus2.matrix);
+
+	cylinder.updateMatrix();
+	geom.merge(cylinder.geometry,cylinder.matrix);
+
+	cylinder2.updateMatrix();
+	geom.merge(cylinder2.geometry,cylinder2.matrix);
+
+	sphere.updateMatrix();
+	geom.merge(sphere.geometry,sphere.matrix);
+
+	//loading a texture for our ufo
+	var load=new THREE.TextureLoader();
+	var mat=load.load('textures/ufob.jpg');
+	var ufoMat=new THREE.MeshLambertMaterial({map:mat});
+	//final ufo
+	var ufo=new Physijs.BoxMesh(geom,ufoMat);
+
+	//y position for ufo
+	ufo.position.y=20;
+	//scales ufo uniformly
+	ufo.scale.set(2,2,2);
+	scene.add(ufo);
+	return ufo;
+}
+
+//function to create big Moon,not in scene anymore as theres a model
+function bigMoon(){
+	var sphere=new THREE.SphereGeometry(50,32,32);
+	var loader=new THREE.TextureLoader();
+	var mat=loader.load('textures/bigmoon.jpeg');
+	var material=new THREE.MeshBasicMaterial({map:mat});
+	var mesh=new THREE.Mesh(sphere,material);
+	mesh.position.y=190;
+	mesh.position.x=-50;
+//	mesh.position.x=0;
+	scene.add(mesh);
+	return mesh;
+}
+
+
+
+//used in the update function
+var step=0;
+var ufo;
+var score=-1;
+var firstTime=1;
+var clock=new THREE.Clock();
+var bigmoon;
+	function update(){
+		step+=1;
+
+//allows to add scene once,if we have functions like createUFO, put it in this if statement so it creates the object one and not every time in the animate loop
+		if(firstTime){
+			createLand();
+			ufo=createUFO();
+			ufo.add(camera);
+			//bigmoon=bigMoon();
+			createBall();
+			scene.add(moon);
+			console.log(moon);
+			firstTime=0;
+		}
+	//	bigmoon.rotation.y+=0.1;
+
+	//calls the check function
+		check();
+
+		//converts time value to string and adds it to document
+		timer.innerHTML=clock.getElapsedTime().toString();
+		//calls the function that moves the ufo
+		moveUFO();
+		//calls change camera orientation function
+		change_cam_orientation();
+
+		//always needed in physics scene
+		scene.simulate();
+
+
+	}
+		//animate function loop
+		function animate(){
+			update();
+			renderer.render(scene,camera);
+			requestAnimationFrame(animate);
+		}
+
+		//varaibles used below for movement and change of camera view
+		var move_left,move_right,move_up,move_down,pause,jump;
+		var change_cam_angle;
+		var y_axis=new THREE.Vector3(0,1,0);
+
+//function to check is timer is at a specific time and score is above certain score
+		function check(){
+			//failure of game objective,this is what will happen if we fail
+			if(clock.getElapsedTime()>85 && score<5){
+				ufo.position.x=0;
+				ufo.position.y=20;
+				ufo.position.z=0;
+				ufo.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+				ufo.setAngularVelocity(new THREE.Vector3(0, 0, 0));
+				ufo.__dirtyPosition=true;
+				score=0;
+				scoreText.innerHTML=score.toString();
+				clock.stop();
+				alert("You have failed this planet");
+				clock.start();
+			}
+
+		}
+
+		//function to change camera view
+		function change_cam_orientation(){
+			if(change_cam_angle){
+				camera.position.x=200;
+				camera.position.y=100;
+				camera.position.z=200;
+				camera.lookAt(ufo.position);
+			}
+			else{
+				camera.position.x=-140;
+				camera.position.y=50;
+				camera.position.z=0;
+				camera.rotation.y=-Math.PI/2;
+				camera.lookAt(ufo.position);
+			}
+		}
+
+
+		//function for moving ufo just use this for movement
+		function moveUFO(){
+
+			if(move_left){
+			rot=new THREE.Quaternion().setFromAxisAngle(y_axis,Math.PI/120);
+			cur=ufo.quaternion;
+			cur.multiplyQuaternions(rot,cur);
+			ufo.__dirtyRotation=true;
+			}
+			else if(move_right){
+				rot=new THREE.Quaternion().setFromAxisAngle(y_axis,-Math.PI/120);
+				cur=ufo.quaternion;
+				cur.multiplyQuaternions(rot,cur);
+				ufo.__dirtyRotation=true;
+			}
+			else if(move_up){
+				var curr_rotation=new THREE.Matrix4().extractRotation(ufo.matrix);
+				//console.log(curr_rotation);
+				var force_vector=new THREE.Vector3(40000,0,0).applyMatrix4(curr_rotation);
+				//console.log(force_vector);
+				ufo.applyCentralImpulse(force_vector);
+				ufo.__dirtyPosition=true;
+				x=0;
+			}
+			else if(move_down){
+				var curr_rotation=new THREE.Matrix4().extractRotation(ufo.matrix);
+				var force_vector=new THREE.Vector3(-40000,0,0).applyMatrix4(curr_rotation);
+				ufo.applyCentralImpulse(force_vector);
+				ufo.__dirtyPosition=true;
+				x=1;
+			}
+			else if(pause){
+				ufo.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+				ufo.setAngularVelocity(new THREE.Vector3(0, 0, 0));
+			}
+			else if(jump){
+				ufo.position.y=70;
+				ufo.__dirtyPosition=true;
+			}
+		}
+		//if you press left,right,up,down,spaceBar,ESC,Enter , sets respective variable to 1 for the moveUFO function
+		document.addEventListener('keydown',function(event){
+			var code=event.keyCode;
+			//move_left=0;move_right=0;move_up=0;move_down=0;pause=0;
+			if(code==37){
+				move_left=1;
+			}
+			if(code==38){
+				move_up=1;
+			}
+			if(code==39){
+				move_right=1;
+			}
+			if(code==40){
+				move_down=1;
+			}
+			if(code==32){
+				pause=1;
+			}
+			if(code==27){
+				change_cam_angle=1;
+			}
+			if(code==13){
+				jump=1;
+			}
+		});
+
+		//when you release left,right,up,down,spaceBar,ESC,Enter , sets respective variable to 0 for the moveUFO function
+		document.addEventListener('keyup',function(event){
+			var code=event.keyCode;
+			//move_left=1;move_right=1;move_up=1;move_down=1;pause=0;
+			if(code==37){
+				move_left=0;
+			}
+			if(code==38){
+				move_up=0;
+			}
+			if(code==39){
+				move_right=0;
+			}
+			if(code==40){
+				move_down=0;
+			}
+			if(code==32){
+				pause=0;
+			}
+			if(code==27){
+				change_cam_angle=0;
+			}
+			if(code==13){
+				jump=0;
+			}
+		});
+
+		//event listener for when clicking on screen to set ufo back to original position
+		document.addEventListener('click',function(event){
+			ufo.position.x=0;
+			ufo.position.y=20;
+			ufo.position.z=0;
+			ufo.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+			ufo.setAngularVelocity(new THREE.Vector3(0, 0, 0));
+			ufo.__dirtyPosition=true;
+		});
+
+//HMU if you need explanation about anything here , for extra shit just google and see how to change some code in the above
+
+
+		</script>
+	</body>
+</html>

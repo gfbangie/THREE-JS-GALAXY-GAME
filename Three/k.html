@@ -28,12 +28,12 @@
 
           Physijs.scripts.worker='js/physijs_worker.js';
           let scene,camera,renderer,controls;
-          let car;
+          let car=new THREE.Geometry();
 
           var gltfGeometry=new THREE.BufferGeometry();
-          cars=[];
+          cars=[];//store buffer geometries
           var objectCar;
-          meshes=[];
+          meshes=[];//store meshes for later
           var damping=0.7;
           var friction=0.9;//high
           const manager=new THREE.LoadingManager();
@@ -42,9 +42,13 @@
 
           const gltfLoader=new THREE.GLTFLoader(manager);
           gltfLoader.load('models/scene.gltf',(gltf)=>{
-            car=gltf.scene;
+            gltf.scene.traverse(function(child){
+              if(child.isMesh){
+                gltfGeometry=child.geometry;
 
-
+                cars.push(gltfGeometry);
+              }
+            });
 
           });
 
@@ -76,7 +80,7 @@
 
             var geometry = new THREE.SphereGeometry( 2, 32, 32 );
             var sphere = new THREE.Mesh( geometry, material );
-            sphere.position.y=-2;
+            sphere.position.y=-1;
             var geom=new THREE.Geometry();
             torus1.updateMatrix();
             geom.merge(torus1.geometry,torus1.matrix);
@@ -96,7 +100,7 @@
 
             ufo.position.y=50;
             ufo.scale.set(5,5,5);
-          //  scene.add(ufo);
+            //scene.add(ufo);
           }
 
 
@@ -173,48 +177,53 @@
 
             var ambi=new THREE.AmbientLight(0xffffff,2);
             scene.add(ambi);
-            car.scale.set(0.1,0.1,0.1);
-            scene.add(car);
 
 
-controls=new THREE.OrbitControls(camera,renderer.domElement);
 
-// for(var i=0;i<cars.length;i++){
-//   var loader=new THREE.TextureLoader();
-//   var mat=loader.load('textures/porsche.png');
-//   var carmat=new THREE.MeshBasicMaterial({map:mat});
-//   var mesh=new THREE.Mesh(cars[i],carmat);
-//   meshes.push(mesh);
-// }
-//
-// var carbody=new THREE.Geometry().fromBufferGeometry(meshes[0].geometry);
-// car.merge(carbody,meshes[0].matrix);
-//
-// var seats=new THREE.Geometry().fromBufferGeometry(meshes[2].geometry);
-// car.merge(seats,meshes[2].matrix);
-// //var leftOvers=new THREE.Geometry().fromBufferGeometry(meshes[3].geometry);
-// //car.merge(leftOvers,meshes[3].matrix);
-//
-// var carObj=new Physijs.BoxMesh(car,carmat);
-//
-// //var j=new Physijs.BoxMesh(car,carmat);
-// //j.scale.set(0.1,0.1,0.1);
-// //j.position.set(50,0,0);
-// carObj.scale.set(0.1,0.1,0.1);
-// carObj.rotation.x=30;
-// carObj.position.y=30;
-// objectCar=carObj;
-// //scene.add(objectCar);
+
+//controls=new THREE.OrbitControls(camera,renderer.domElement);
+
 
 requestAnimationFrame(animate);
+}
+function createCar(){
+for(var i=0;i<cars.length;i++){
+  var loader=new THREE.TextureLoader();
+  var mat=loader.load('models/textures/Body_SG1_baseColor.jpeg');
+  var carmat=new THREE.MeshBasicMaterial({map:mat});
+  var mesh=new THREE.Mesh(cars[i],carmat);
+  meshes.push(mesh);
+}
+var mats=[carmat];
+console.log(meshes.length);
+var carbody=new THREE.Geometry().fromBufferGeometry(meshes[0].geometry);
+car.merge(carbody,meshes[0].matrix,0);
+
+ var seats=new THREE.Geometry().fromBufferGeometry(meshes[2].geometry);
+ car.merge(seats,meshes[2].matrix);
+// var leftOvers=new THREE.Geometry().fromBufferGeometry(meshes[3].geometry);
+// car.merge(leftOvers,meshes[3].matrix);
+
+
+console.log(car);
+var carObj=new Physijs.BoxMesh(car,mats);
+
+//var j=new Physijs.BoxMesh(car,carmat);
+//j.scale.set(0.1,0.1,0.1);
+//j.position.set(50,0,0);
+carObj.scale.set(0.1,0.1,0.1);
+carObj.rotation.x=30;
+carObj.position.y=30;
+objectCar=carObj;
+scene.add(objectCar);
 }
 var firstTime=1;
 
 function update(){
   if(firstTime){
-  //createLand();
+  createLand();
   createUFO();
-
+  createCar();
 
 //scene.add(j)
   firstTime=0;
@@ -224,7 +233,7 @@ moveTruck()
 
 
   scene.simulate();
- controls.update();
+ //controls.update();
 }
   function animate(){
 
@@ -271,8 +280,9 @@ function moveTruck(){
     objectCar.__dirtyRotation=true;
   }
   else if(move_up){
-    console.log(objectCar.position);
-    objectCar.position.z+=1;
+    var curr_rotation=new THREE.Matrix4().extractRotation(objectCar.matrix);
+    var force_vector=new THREE.Vector3(500000,0,0).applyMatrix4(curr_rotation);
+    objectCar.applyCentralImpulse(force_vector);
     objectCar.__dirtyPosition=true;
   }
   else if(move_down){
